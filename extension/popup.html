@@ -17,34 +17,110 @@
             <span class="shield-badge">SHIELD ACTIVE</span>
         </header>
 
+        <div class="tabs-nav">
+            <button class="tab-btn active" data-tab="url-tab">URL Scanner</button>
+            <button class="tab-btn" data-tab="email-tab">Email Scanner</button>
+        </div>
+
         <main>
-            <div class="current-site-box">
-                <div class="site-label">Active Site</div>
-                <div id="active-url" class="site-url">Detecting URL...</div>
-            </div>
-
-            <button id="scan-btn" class="scan-button">Scan This Tab</button>
-
-            <!-- Loading State -->
-            <div id="loading-state" class="state-container hidden">
-                <div class="spinner"></div>
-                <p>Analyzing registry records & structures...</p>
-            </div>
-
-            <!-- Result State -->
-            <div id="result-state" class="state-container hidden">
-                <div class="score-card">
-                    <div id="risk-score" class="score-number">0%</div>
-                    <div class="score-label">PHISHING RISK</div>
+            <!-- URL Scanner Panel -->
+            <div id="url-tab" class="tab-pane">
+                <div class="current-site-box">
+                    <div class="site-label">Active Site</div>
+                    <div id="active-url" class="site-url">Detecting URL...</div>
                 </div>
-                
-                <div id="status-alert" class="status-banner">SAFE</div>
-                
-                <div class="verdict-card">
-                    <h3>Technical Findings:</h3>
-                    <ul id="findings-list">
-                        <!-- Key reasons populated here -->
-                    </ul>
+
+                <button id="scan-btn" class="scan-button">Scan This Tab</button>
+
+                <!-- Loading State -->
+                <div id="loading-state" class="state-container hidden">
+                    <div class="spinner"></div>
+                    <p>Analyzing registry records & structures...</p>
+                </div>
+
+                <!-- Result State -->
+                <div id="result-state" class="state-container hidden">
+                    <div class="score-card">
+                        <div id="risk-score" class="score-number">0%</div>
+                        <div class="score-label">PHISHING RISK</div>
+                    </div>
+                    
+                    <div id="status-alert" class="status-banner">SAFE</div>
+                    
+                    <div class="verdict-card">
+                        <h3>Technical Findings:</h3>
+                        <ul id="findings-list">
+                            <!-- Key reasons populated here -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Scanner Panel -->
+            <div id="email-tab" class="tab-pane hidden">
+                <form id="email-form" class="email-scan-form">
+                    <div class="form-group">
+                        <label for="email-sender">Sender Address</label>
+                        <input type="email" id="email-sender" placeholder="e.g. billing@paypal-verify.com" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="email-subject">Subject</label>
+                        <input type="text" id="email-subject" placeholder="e.g. Action Required: Verification" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="email-body">Body Preview</label>
+                        <textarea id="email-body" rows="2" placeholder="e.g. Please click the link to verify your account..."></textarea>
+                    </div>
+                    <div class="auth-grid">
+                        <div class="form-group">
+                            <label for="email-spf">SPF</label>
+                            <select id="email-spf">
+                                <option value="none">None</option>
+                                <option value="pass">Pass</option>
+                                <option value="fail">Fail</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="email-dkim">DKIM</label>
+                            <select id="email-dkim">
+                                <option value="none">None</option>
+                                <option value="pass">Pass</option>
+                                <option value="fail">Fail</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="email-dmarc">DMARC</label>
+                            <select id="email-dmarc">
+                                <option value="none">None</option>
+                                <option value="pass">Pass</option>
+                                <option value="fail">Fail</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" id="email-scan-btn" class="scan-button">Scan Sender Email</button>
+                </form>
+
+                <!-- Loading State for Email -->
+                <div id="email-loading-state" class="state-container hidden">
+                    <div class="spinner"></div>
+                    <p>Verifying headers & DNS metrics...</p>
+                </div>
+
+                <!-- Result State for Email -->
+                <div id="email-result-state" class="state-container hidden">
+                    <div class="score-card">
+                        <div id="email-risk-score" class="score-number">0%</div>
+                        <div class="score-label">SENDER RISK</div>
+                    </div>
+                    
+                    <div id="email-status-alert" class="status-banner">SAFE</div>
+                    
+                    <div class="verdict-card">
+                        <h3>Verdict Details:</h3>
+                        <ul id="email-findings-list">
+                            <!-- Key findings populated here -->
+                        </ul>
+                    </div>
                 </div>
             </div>
         </main>

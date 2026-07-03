@@ -1,21 +1,54 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    // Tab switching elements
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    // URL Scanner elements
     const activeUrlEl = document.getElementById('active-url');
     const scanBtn = document.getElementById('scan-btn');
     const loadingState = document.getElementById('loading-state');
     const resultState = document.getElementById('result-state');
-    
     const riskScoreEl = document.getElementById('risk-score');
     const statusAlertEl = document.getElementById('status-alert');
     const findingsList = document.getElementById('findings-list');
 
+    // Email Scanner elements
+    const emailForm = document.getElementById('email-form');
+    const emailScanBtn = document.getElementById('email-scan-btn');
+    const emailLoadingState = document.getElementById('email-loading-state');
+    const emailResultState = document.getElementById('email-result-state');
+    const emailRiskScoreEl = document.getElementById('email-risk-score');
+    const emailStatusAlertEl = document.getElementById('email-status-alert');
+    const emailFindingsList = document.getElementById('email-findings-list');
+
     let currentTabUrl = '';
 
-    // 1. Get current active tab URL
+    // --- 1. Tab Switching Logic ---
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabButtons.forEach(b => b.classList.remove('active'));
+            tabPanes.forEach(p => p.classList.add('hidden'));
+
+            btn.classList.add('active');
+            const targetPane = document.getElementById(btn.dataset.tab);
+            if (targetPane) {
+                targetPane.classList.remove('hidden');
+            }
+        });
+    });
+
+    // --- 2. URL Scanner: Get active tab URL ---
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab && tab.url) {
             currentTabUrl = tab.url;
             activeUrlEl.textContent = currentTabUrl;
+            
+            // Pre-populate email sender input if visiting a mailto link
+            if (currentTabUrl.startsWith('mailto:')) {
+                const mailAddr = currentTabUrl.replace('mailto:', '').split('?')[0];
+                document.getElementById('email-sender').value = mailAddr;
+            }
         } else {
             activeUrlEl.textContent = "Unable to read active tab URL.";
             scanBtn.disabled = true;
@@ -26,11 +59,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         scanBtn.disabled = true;
     }
 
-    // 2. Perform Scan
+    // --- 3. URL Scanner: Run Scan ---
     scanBtn.addEventListener('click', async () => {
         if (!currentTabUrl) return;
 
-        // Reset UI State
         scanBtn.disabled = true;
         loadingState.classList.remove('hidden');
         resultState.classList.add('hidden');
@@ -55,7 +87,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const riskVal = data.risk_score_pct;
             riskScoreEl.textContent = `${riskVal}%`;
 
-            // Adjust Color Banners
             if (riskVal < 30) {
                 statusAlertEl.textContent = 'SAFE LINK';
                 statusAlertEl.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
@@ -73,10 +104,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 riskScoreEl.style.color = '#ef4444';
             }
 
-            // Populate Findings
             findingsList.innerHTML = '';
             
-            // Brand Impersonation Warning
             if (data.brand_alert && data.brand_alert.impersonated) {
                 const brandLi = document.createElement('li');
                 brandLi.style.color = '#ef4444';
@@ -89,7 +118,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const li = document.createElement('li');
                 const val = indicator.value;
                 const feat = indicator.feature;
-                const isRiskInc = indicator.direction === 'increases';
                 
                 let desc = '';
                 if (feat === 'time_domain_activation') {
@@ -118,6 +146,86 @@ document.addEventListener('DOMContentLoaded', async () => {
         } finally {
             loadingState.classList.add('hidden');
             scanBtn.disabled = false;
+        }
+    });
+
+    // --- 4. Email Scanner: Run Scan ---
+    emailForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const sender = document.getElementById('email-sender').value.trim();
+        const subject = document.getElementById('email-subject').value.trim();
+        const body = document.getElementById('email-body').value.trim();
+        const spf = document.getElementById('email-spf').value;
+        const dkim = document.getElementById('email-dkim').value;
+        const dmarc = document.getElementById('email-dmarc').value;
+
+        emailScanBtn.disabled = true;
+        emailLoadingState.classList.remove('hidden');
+        emailResultState.classList.add('hidden');
+
+        try {
+            const response = await fetch('http://localhost:5001/api/analyze/email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: sender,
+                    subject: subject,
+                    body: body,
+                    spf: spf,
+                    dkim: dkim,
+                    dmarc: dmarc
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || 'Email scan failed.');
+            }
+
+            const data = await response.json();
+            
+            // Render Result
+            const riskVal = data.risk_score_pct;
+            emailRiskScoreEl.textContent = `${riskVal}%`;
+
+            if (riskVal < 30) {
+                emailStatusAlertEl.textContent = 'SAFE SENDER';
+                emailStatusAlertEl.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                emailStatusAlertEl.style.color = '#10b981';
+                emailRiskScoreEl.style.color = '#10b981';
+            } else if (riskVal < 70) {
+                emailStatusAlertEl.textContent = 'SUSPICIOUS SENDER';
+                emailStatusAlertEl.style.backgroundColor = 'rgba(245, 158, 11, 0.15)';
+                emailStatusAlertEl.style.color = '#f59e0b';
+                emailRiskScoreEl.style.color = '#f59e0b';
+            } else {
+                emailStatusAlertEl.textContent = 'DANGEROUS SENDER';
+                emailStatusAlertEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                emailStatusAlertEl.style.color = '#ef4444';
+                emailRiskScoreEl.style.color = '#ef4444';
+            }
+
+            emailFindingsList.innerHTML = '';
+            
+            // List reasons/signals
+            const reasons = data.details.reasons || [];
+            reasons.forEach(reason => {
+                const li = document.createElement('li');
+                li.textContent = reason;
+                emailFindingsList.appendChild(li);
+            });
+
+            emailResultState.classList.remove('hidden');
+
+        } catch (error) {
+            console.error(error);
+            alert(`Unable to contact scan backend. Ensure Flask is running at http://localhost:5001.`);
+        } finally {
+            emailLoadingState.classList.add('hidden');
+            emailScanBtn.disabled = false;
         }
     });
 });
