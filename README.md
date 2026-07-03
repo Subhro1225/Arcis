@@ -7,7 +7,7 @@
 
 Arcis is a real-time, explainable threat intelligence, URL verification, and email classification suite. Powered by a custom-tuned **LightGBM Classifier** (for URLs) and an **XGBoost ONNX Classifier** (for emails), Arcis translates complex network and lexical telemetry into human-readable risk assessments.
 
-The suite comprises a rate-limited Flask REST API node, a premium glassmorphic web dashboard, and a Manifest V3 Google Chrome extension.
+The suite comprises a rate-limited FastAPI REST API node, a premium glassmorphic web dashboard, and a Manifest V3 Google Chrome extension.
 
 ---
 
@@ -41,7 +41,7 @@ The following diagram illustrates the interaction flow between the frontend appl
 ```mermaid
 sequenceDiagram
     participant User as Web Browser / Extension Popup
-    participant API as Flask API Gateway (Port 5001)
+    participant API as FastAPI Gateway (Port 5001)
     participant UC as URL Classifier (LightGBM)
     participant EC as Email Classifier (XGBoost ONNX)
     participant DNS as Public DNS / WHOIS Servers
@@ -72,14 +72,15 @@ The codebase is structured cleanly into logical backend, frontend, and extension
 ```
 Arcis/
 ├── backend/
-│   ├── app.py                      # Flask REST API server (Rate-limited, CORS-enabled)
+│   ├── main.py                     # FastAPI REST API server (Async, Rate-limited, CORS-enabled)
 │   ├── models/
 │   │   ├── url_phishing_bundle.joblib # LightGBM classifier binary (URLs)
 │   │   └── xgboost_model.onnx         # XGBoost classifier binary (Emails)
+│   ├── scripts/
+│   │   └── train_email_model.py    # Training script for Email ML model
 │   ├── services/
 │   │   ├── url_classifier.py       # Feature extraction & classification service (URLs)
 │   │   └── email_classifier.py     # Feature extraction & classification service (Emails)
-│   └── test_phishing.py            # Local backend verification test suite
 ├── frontend/
 │   ├── index.html                  # Premium glassmorphic dashboard UI
 │   ├── style.css                   # Dynamic stylesheet with floating background glows
@@ -121,21 +122,13 @@ Start the API server on its default port (`5001`):
 # Activate virtual environment if not already active
 source .venv/bin/activate
 
-# Start the Flask API
-python backend/app.py
+# Start the FastAPI server using Uvicorn
+uvicorn backend.main:app --host 0.0.0.0 --port 5001 --reload
 ```
 
-*For production workloads, consider using **Gunicorn** to handle concurrent operations:*
+*For production workloads, consider using **Uvicorn workers** or running it behind Gunicorn with Uvicorn workers:*
 ```bash
-gunicorn -w 4 -b 0.0.0.0:5001 --chdir backend app:app
-```
-
-### 3. Running Backend Tests
-
-Verify that feature extraction and classification pipelines are working:
-
-```bash
-.venv/bin/python backend/test_phishing.py
+gunicorn backend.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:5001
 ```
 
 ### 4. Launch the Web Application
@@ -270,9 +263,9 @@ If you receive an error stating `Address already in use` when booting the backen
 lsof -i :5001
 kill -9 <PID>
 ```
-Or, start Arcis on a custom port by defining the environment variable:
+Or, start Arcis on a custom port:
 ```bash
-PORT=5002 python backend/app.py
+PORT=5002 uvicorn backend.main:app --port 5002
 ```
 
 #### 2. WHOIS Lookup Timeouts
