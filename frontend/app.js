@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         scanHistory.forEach(item => {
             const historyCard = document.createElement('div');
-            historyCard.className = 'history-item';
+            historyCard.className = `history-item ${item.isPhishing ? 'is-phishing' : 'is-safe'}`;
             historyCard.addEventListener('click', () => {
                 urlInput.value = item.url;
                 form.dispatchEvent(new Event('submit'));
