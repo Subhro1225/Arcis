@@ -4,11 +4,15 @@
   "version": "1.0",
   "description": "Scans and analyzes active URLs using the Arcis LightGBM machine learning classifier.",
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   "host_permissions": [
     "http://localhost:5001/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
   }

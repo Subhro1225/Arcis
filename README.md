@@ -16,18 +16,26 @@ Arcis is a real-time, explainable phishing URL detection system built using a pr
 
 ```
 Arcis/
-├── app.py                      # Flask REST API server
-├── model_service.py            # Feature extraction & classification pipeline
-├── phishing_model_bundle.joblib # Trained LightGBM model & scaler bundle
-├── index.html                  # Web application UI
-├── style.css                   # Premium CSS styles
-├── frontend.js                 # Frontend API integration script
-├── extension/                  # Chrome extension directory
-│   ├── manifest.json           # Extension manifest V3 config
-│   ├── popup.html              # Extension popup layout
-│   ├── popup.css               # Extension styles
-│   └── popup.js                # Extension logic
-└── .gitignore                  # Git exclude list
+├── backend/
+│   ├── app.py                      # Flask REST API server
+│   ├── models/                     # Saved ML model binaries
+│   │   └── url_phishing_bundle.joblib
+│   └── services/                   # Feature extraction & classification services
+│       ├── url_classifier.py       # URL feature extraction & LightGBM model logic
+│       └── email_classifier.py     # Email classification template (for your model)
+├── frontend/
+│   ├── index.html                  # Premium SaaS Dashboard
+│   ├── style.css                   # Glassmorphic style sheet
+│   └── app.js                      # Web app integration logic
+├── extension/                      # Manifest V3 Chrome Extension
+│   ├── manifest.json
+│   ├── popup.html
+│   ├── popup.css
+│   ├── popup.js
+│   └── background.js
+├── requirements.txt
+├── README.md
+└── .gitignore
 ```
 
 ---
@@ -49,18 +57,27 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 
 # Install required dependencies
-pip install joblib lightgbm scipy numpy scikit-learn flask flask-cors pandas tldextract dnspython python-whois
+pip install -r requirements.txt
 ```
 
 ### 2. Run the Backend API Server
-Start the Flask backend server:
+
+**For Development:**
 ```bash
-python app.py
+python backend/app.py
 ```
-The API server will run at `http://localhost:5001/api/analyze`.
+
+**For Production (High Concurrency & Load):**
+Use Gunicorn with multi-worker threads to handle a high volume of users concurrently:
+```bash
+gunicorn -w 4 -b 0.0.0.0:5001 --chdir backend app:app
+```
+The API server exposes:
+- `/api/analyze/url` (`POST`) for URL phishing scans.
+- `/api/analyze/email` (`POST`) for email sender security checks.
 
 ### 3. Open the Web Application
-Simply open the `index.html` file in any modern web browser to use the graphical web application dashboard. Paste a URL and click **Analyze Link** to get instant classification metrics and indicators.
+Open the [index.html](file:///Users/Anurag/Anurag/Projects/Arcis/frontend/index.html) file inside the `frontend/` folder directly in any browser.
 
 ### 4. Load the Chrome Browser Extension
 1. Open Google Chrome and navigate to `chrome://extensions/`.

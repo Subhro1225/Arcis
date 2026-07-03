@@ -64,9 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save Scan to History
     function saveToHistory(url, riskScore, isPhishing) {
-        // Remove duplicates of same URL to keep it clean
         scanHistory = scanHistory.filter(item => item.url !== url);
-        
         scanHistory.unshift({
             url: url,
             risk: riskScore,
@@ -74,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         });
 
-        // Limit to 15 items
         if (scanHistory.length > 15) {
             scanHistory.pop();
         }
@@ -134,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.disabled = true;
         
         try {
-            const response = await fetch('http://localhost:5001/api/analyze', {
+            const response = await fetch('http://localhost:5001/api/analyze/url', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

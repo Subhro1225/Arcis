@@ -55,11 +55,6 @@ venv.bak/
 # Keep local model bundle if wanted, but standard cache/logs
 *.log
 
-# Machine Learning models (large binary files)
-*.joblib
-*.pkl
-*.onnx
-
 # Compressed archives & Extension packages
 *.zip
 *.tar.gz

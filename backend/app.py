@@ -5,7 +5,12 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from model_service import predict_url
+
+# Add parent directory of services to path if running directly
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from services.url_classifier import predict_url
+from services.email_classifier import predict_sender_email
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,8 +29,8 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-@app.route('/api/analyze', methods=['POST'])
-@limiter.limit("60 per minute")  # Limit each IP to 60 requests per minute
+@app.route('/api/analyze/url', methods=['POST'])
+@limiter.limit("60 per minute")
 def analyze_url():
     data = request.get_json()
     if not data or 'url' not in data:
@@ -43,9 +48,35 @@ def analyze_url():
         logger.error(f"Error analyzing URL {url}: {e}", exc_info=True)
         return jsonify({"error": "Internal server error during URL analysis", "details": str(e)}), 500
 
+@app.route('/api/analyze/email', methods=['POST'])
+@limiter.limit("60 per minute")
+def analyze_email():
+    data = request.get_json()
+    if not data or 'email' not in data:
+        return jsonify({"error": "Missing 'email' parameter in request body"}), 400
+    
+    email = data['email'].strip()
+    if not email:
+        return jsonify({"error": "Empty email address provided"}), 400
+    
+    logger.info(f"Analyzing Email: {email} from client {get_remote_address()}")
+    try:
+        result = predict_sender_email(email)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error analyzing Email {email}: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error during Email analysis", "details": str(e)}), 500
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy", "model": "LightGBM_Tuned"}), 200
+    return jsonify({
+        "status": "healthy", 
+        "node": "US-EAST-1",
+        "models": {
+            "url_classifier": "LightGBM_Tuned",
+            "email_classifier": "Heuristics_Dns_Verifier"
+        }
+    }), 200
 
 # Customize Rate Limit error response to return clean JSON
 @app.errorhandler(429)
@@ -57,5 +88,5 @@ def ratelimit_handler(e):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
-    logger.info(f"Starting Optimized Phishing Detection API on port {port}...")
+    logger.info(f"Starting Arcis Multi-Model API Node on port {port}...")
     app.run(host='0.0.0.0', port=port, debug=False)

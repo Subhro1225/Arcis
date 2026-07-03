@@ -14,7 +14,7 @@ import whois
 from concurrent.futures import ThreadPoolExecutor
 
 # Load the model bundle
-BUNDLE_PATH = os.path.join(os.path.dirname(__file__), "phishing_model_bundle.joblib")
+BUNDLE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "url_phishing_bundle.joblib")
 if not os.path.exists(BUNDLE_PATH):
     raise FileNotFoundError(f"Model bundle not found at {BUNDLE_PATH}")
 
@@ -360,10 +360,9 @@ def predict_url(url: str) -> dict:
     prob = model.predict_proba(scaled_df)[0, 1]
     is_phishing = bool(prob >= 0.5)
     
-    # Overwrite prediction if a typosquatted brand match is found (Heuristic safeguard)
     if brand_check["impersonated"]:
         is_phishing = True
-        prob = max(prob, 0.95)  # Force high probability for typosquatting
+        prob = max(prob, 0.95)
 
     importances = model.feature_importances_
     contributions = scaled[0] * importances
@@ -390,14 +389,3 @@ def predict_url(url: str) -> dict:
         "features": {k: float(v) for k, v in feats.items() if k in features_list},
         "top_features": reasons
     }
-
-if __name__ == "__main__":
-    test_urls = [
-        "https://www.google.com",
-        "https://www.paypa1.com/login"
-    ]
-    for tu in test_urls:
-        res = predict_url(tu)
-        print(f"\nURL: {tu}")
-        print("Result:", res["is_phishing"], "| Risk:", res["risk_score_pct"], "%")
-        print("Brand Alert:", res["brand_alert"])

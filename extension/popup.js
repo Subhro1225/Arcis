@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultState.classList.add('hidden');
 
         try {
-            const response = await fetch('http://localhost:5001/api/analyze', {
+            const response = await fetch('http://localhost:5001/api/analyze/url', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -75,6 +75,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Populate Findings
             findingsList.innerHTML = '';
+            
+            // Brand Impersonation Warning
+            if (data.brand_alert && data.brand_alert.impersonated) {
+                const brandLi = document.createElement('li');
+                brandLi.style.color = '#ef4444';
+                brandLi.style.fontWeight = '700';
+                brandLi.textContent = `🚨 Brand Impersonation: Imitating "${data.brand_alert.brand.toUpperCase()}" (${data.brand_alert.type})`;
+                findingsList.appendChild(brandLi);
+            }
+
             data.top_features.forEach(indicator => {
                 const li = document.createElement('li');
                 const val = indicator.value;
