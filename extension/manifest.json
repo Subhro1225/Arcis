@@ -5,9 +5,11 @@
   "description": "Scans and analyzes active URLs using the Arcis LightGBM machine learning classifier.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
+    "<all_urls>",
     "http://localhost:5001/*",
     "http://127.0.0.1:5001/*",
     "https://mail.google.com/*"

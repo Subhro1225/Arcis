@@ -231,6 +231,14 @@
   const riskFill     = root.querySelector('#arcis-risk-fill');
   const riskPct      = root.querySelector('#arcis-risk-pct');
   const findingsList = root.querySelector('#arcis-findings-list');
+  const moreLink     = root.querySelector('#arcis-more-link');
+
+  // Load backend URL configuration dynamically
+  chrome.runtime.sendMessage({ action: 'get_backend_url' }, response => {
+      if (response && response.url && moreLink) {
+          moreLink.href = response.url;
+      }
+  });
 
   /* ── Expand / Contract ──────────────────────────────────── */
   function expand() {
@@ -444,7 +452,10 @@
         const base64Data = btoa(unescape(encodeURIComponent(JSON.stringify(reportPayload))));
         const reportLink = root.querySelector('#arcis-more-link');
         if (reportLink) {
-          reportLink.href = `http://127.0.0.1:5001/report.html?data=${encodeURIComponent(base64Data)}`;
+          chrome.runtime.sendMessage({ action: 'get_backend_url' }, response => {
+              const url = (response && response.url) ? response.url : 'http://localhost:5001';
+              reportLink.href = `${url}/report.html?data=${encodeURIComponent(base64Data)}`;
+          });
         }
       } catch (err) {
         console.error('Failed to encode report payload:', err);

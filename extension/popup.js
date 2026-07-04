@@ -3,6 +3,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tabButtons = document.querySelectorAll('.p-tab');
     const tabPanes = document.querySelectorAll('.p-pane');
 
+    // Load backend URL configuration
+    let backendUrl = 'http://localhost:5001';
+    const settingsUrlInput = document.getElementById('settings-backend-url');
+    const settingsSaveBtn = document.getElementById('settings-save-btn');
+    const launchDashboardLink = document.getElementById('launch-dashboard-link');
+
+    try {
+        const stored = await chrome.storage.local.get('backend_url');
+        if (stored.backend_url) {
+            backendUrl = stored.backend_url;
+        }
+    } catch (e) {
+        console.error(e);
+    }
+
+    if (settingsUrlInput) {
+        settingsUrlInput.value = backendUrl;
+    }
+    if (launchDashboardLink) {
+        launchDashboardLink.href = backendUrl;
+    }
+
+    if (settingsSaveBtn && settingsUrlInput) {
+        settingsSaveBtn.addEventListener('click', async () => {
+            const val = settingsUrlInput.value.trim().replace(/\/$/, '');
+            if (!val) return;
+            backendUrl = val;
+            await chrome.storage.local.set({ backend_url: val });
+            if (launchDashboardLink) {
+                launchDashboardLink.href = val;
+            }
+            alert('API endpoint saved successfully!');
+        });
+    }
+
     // URL Scanner elements
     const activeUrlEl = document.getElementById('active-url');
     const scanBtn = document.getElementById('scan-btn');
@@ -68,7 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultState.classList.add('hidden');
 
         try {
-            const response = await fetch('http://127.0.0.1:5001/api/analyze/url', {
+            const response = await fetch(`${backendUrl}/api/analyze/url`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -142,7 +177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } catch (error) {
             console.error(error);
-            alert(`Unable to contact scan backend. Ensure Flask is running at http://localhost:5001.`);
+            alert(`Unable to contact scan backend. Ensure API node is running at ${backendUrl}.`);
         } finally {
             loadingState.classList.add('hidden');
             scanBtn.disabled = false;
@@ -165,7 +200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         emailResultState.classList.add('hidden');
 
         try {
-            const response = await fetch('http://127.0.0.1:5001/api/analyze/email', {
+            const response = await fetch(`${backendUrl}/api/analyze/email`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -222,7 +257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } catch (error) {
             console.error(error);
-            alert(`Unable to contact scan backend. Ensure Flask is running at http://localhost:5001.`);
+            alert(`Unable to contact scan backend. Ensure API node is running at ${backendUrl}.`);
         } finally {
             emailLoadingState.classList.add('hidden');
             emailScanBtn.disabled = false;

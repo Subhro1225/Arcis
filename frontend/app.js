@@ -6,7 +6,7 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     /* ── Constants ─────────────────────────────────────────── */
-    const API_BASE      = 'http://localhost:5001';
+    const API_BASE      = window.location.origin;
     const CIRCUMFERENCE = 2 * Math.PI * 80; // r=80 → 502.65
 
     /* ── URL Scanner elements ──────────────────────────────── */
