@@ -194,7 +194,7 @@
           <span class="arcis-findings-title">Signals Detected</span>
           <ul id="arcis-findings-list"></ul>
         </div>
-        <a id="arcis-more-link" href="http://localhost:5001" target="_blank" rel="noopener noreferrer">
+        <a id="arcis-more-link" href="https://arcis-dvgq.onrender.com" target="_blank" rel="noopener noreferrer">
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
             <path d="M1 5.5h9M6.5 1.5l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -453,7 +453,7 @@
         const reportLink = root.querySelector('#arcis-more-link');
         if (reportLink) {
           chrome.runtime.sendMessage({ action: 'get_backend_url' }, response => {
-              const url = (response && response.url) ? response.url : 'http://localhost:5001';
+              const url = (response && response.url) ? response.url : 'https://arcis-dvgq.onrender.com';
               reportLink.href = `${url}/report.html?data=${encodeURIComponent(base64Data)}`;
           });
         }

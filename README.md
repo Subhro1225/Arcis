@@ -165,7 +165,7 @@ Simply open the [index.html](file:///Users/Anurag/Anurag/Projects/Arcis/frontend
   ```
 * **Example curl Request**:
   ```bash
-  curl -X POST http://localhost:5001/api/analyze/url \
+  curl -X POST https://arcis-dvgq.onrender.com/api/analyze/url \
     -H "Content-Type: application/json" \
     -d '{"url": "https://www.google.com"}'
   ```
@@ -213,7 +213,7 @@ Simply open the [index.html](file:///Users/Anurag/Anurag/Projects/Arcis/frontend
   ```
 * **Example curl Request**:
   ```bash
-  curl -X POST http://localhost:5001/api/analyze/email \
+  curl -X POST https://arcis-dvgq.onrender.com/api/analyze/email \
     -H "Content-Type: application/json" \
     -d '{"email": "paypal-support@gmail.com", "subject": "Urgent", "body": "Click here", "spf": "fail"}'
   ```

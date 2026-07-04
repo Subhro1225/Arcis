@@ -6,9 +6,9 @@ const scanCache = {};
 async function getBackendUrl() {
     try {
         const stored = await chrome.storage.local.get('backend_url');
-        return stored.backend_url || 'http://localhost:5001';
+        return stored.backend_url || 'https://arcis-dvgq.onrender.com';
     } catch (e) {
-        return 'http://localhost:5001';
+        return 'https://arcis-dvgq.onrender.com';
     }
 }
 

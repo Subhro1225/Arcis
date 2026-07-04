@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tabPanes = document.querySelectorAll('.p-pane');
 
     // Load backend URL configuration
-    let backendUrl = 'http://localhost:5001';
+    let backendUrl = 'https://arcis-dvgq.onrender.com';
     const settingsUrlInput = document.getElementById('settings-backend-url');
     const settingsSaveBtn = document.getElementById('settings-save-btn');
     const launchDashboardLink = document.getElementById('launch-dashboard-link');
