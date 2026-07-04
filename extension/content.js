@@ -194,11 +194,11 @@
           <span class="arcis-findings-title">Signals Detected</span>
           <ul id="arcis-findings-list"></ul>
         </div>
-        <a id="arcis-more-link" href="https://arcisshield.example.com/report" target="_blank" rel="noopener noreferrer">
+        <a id="arcis-more-link" href="http://localhost:5001" target="_blank" rel="noopener noreferrer">
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
             <path d="M1 5.5h9M6.5 1.5l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          For full report, visit arcisshield.com
+          For full report, launch Arcis Dashboard
         </a>
         <button id="arcis-rescan-btn" class="arcis-btn arcis-btn--ghost">
           Scan Again
@@ -296,28 +296,26 @@
     showState('scan');
 
     try {
-      const response = await fetch('http://localhost:5001/api/analyze/email', {
-        method : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({
+      chrome.runtime.sendMessage({
+        action: 'analyze_email',
+        data: {
           email  : emailData.sender,
           subject: emailData.subject,
           body   : emailData.body,
           spf    : 'none',
           dkim   : 'none',
           dmarc  : 'none'
-        })
+        }
+      }, response => {
+        let data;
+        if (response && response.success) {
+          data = response.data;
+        } else {
+          console.warn('API fetch failed or was blocked, falling back to demo mode:', response ? response.error : 'No response');
+          data = buildDemoVerdict(emailData);
+        }
+        renderVerdict(data);
       });
-
-      let data;
-      if (response.ok) {
-        data = await response.json();
-      } else {
-        /* Fallback demo mode when backend is offline */
-        data = buildDemoVerdict(emailData);
-      }
-
-      renderVerdict(data);
     } catch (_) {
       /* Backend offline – show demo verdict so UI still demonstrates */
       renderVerdict(buildDemoVerdict(emailData));

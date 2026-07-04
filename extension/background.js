@@ -53,3 +53,33 @@ function updateBadge(tabId, riskScore) {
         chrome.action.setBadgeBackgroundColor({ tabId: tabId, color: '#ef4444' });
     }
 }
+
+// Message listener to handle privileged fetch requests bypassing Gmail CSP
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'analyze_email') {
+        fetch('http://localhost:5001/api/analyze/email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(request.data)
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    throw new Error(err.detail || 'API Error');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            sendResponse({ success: true, data: data });
+        })
+        .catch(err => {
+            console.error('Background Email Scan failed:', err);
+            sendResponse({ success: false, error: err.message });
+        });
+        return true; // Keep message channel open for async response
+    }
+});
+

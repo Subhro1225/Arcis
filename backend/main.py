@@ -36,10 +36,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Add Security Headers Middleware
 @app.middleware("http")
@@ -117,6 +118,13 @@ async def health_check():
         },
         "framework": "FastAPI"
     }
+
+from fastapi.staticfiles import StaticFiles
+
+# Serve frontend static files from the root URL
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 if __name__ == '__main__':
     import uvicorn
