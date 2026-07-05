@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Arcis Phishing Detector",
   "version": "1.0",
-  "description": "Scans and analyzes active URLs using the Arcis LightGBM machine learning classifier.",
+  "description": "Real-time, explainable threat intelligence for URLs and emails using LightGBM and XGBoost ONNX ML classifiers.",
   "permissions": [
     "activeTab",
     "scripting",
