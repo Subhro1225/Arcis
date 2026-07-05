@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* ── Constants ─────────────────────────────────────────── */
     const API_BASE      = window.location.origin;
+    const getApiKey     = () => localStorage.getItem('arcis_api_key') || 'arcis-default-secret-key-2026';
     const CIRCUMFERENCE = 2 * Math.PI * 80; // r=80 → 502.65
 
     /* ── URL Scanner elements ──────────────────────────────── */
@@ -84,8 +85,50 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(step);
     });
 
+    /* ── Crypto and HTML escape Helpers ────────────────────── */
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, "&amp;")
+                  .replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;")
+                  .replace(/'/g, "&#039;");
+    }
+
+    function encryptData(text) {
+        const key = 42;
+        let result = "";
+        for (let i = 0; i < text.length; i++) {
+            result += String.fromCharCode(text.charCodeAt(i) ^ key);
+        }
+        return btoa(unescape(encodeURIComponent(result)));
+    }
+
+    function decryptData(ciphertext) {
+        if (!ciphertext) return "[]";
+        try {
+            const decoded = decodeURIComponent(escape(atob(ciphertext)));
+            const key = 42;
+            let result = "";
+            for (let i = 0; i < decoded.length; i++) {
+                result += String.fromCharCode(decoded.charCodeAt(i) ^ key);
+            }
+            return result;
+        } catch (e) {
+            return "[]";
+        }
+    }
+
     /* ── History state ─────────────────────────────────────── */
-    let scanHistory = JSON.parse(localStorage.getItem('arcis_scans')) || [];
+    let scanHistory = [];
+    try {
+        const rawHistory = localStorage.getItem('arcis_scans');
+        if (rawHistory) {
+            scanHistory = JSON.parse(decryptData(rawHistory));
+        }
+    } catch (e) {
+        console.error("Failed to load/decrypt history", e);
+    }
     renderHistory();
 
     /* ════════════════════════════════════════════════════════
@@ -94,14 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * Set the gauge ring stroke and all associated UI state.
-     * @param {HTMLElement} progressEl  - The <circle> fill element
-     * @param {HTMLElement} pctEl       - Percentage text node
-     * @param {HTMLElement} labelEl     - Label badge inside gauge
-     * @param {HTMLElement} badgeEl     - card__badge element
-     * @param {HTMLElement} descEl      - verdict text
-     * @param {HTMLElement} stripEl     - verdict strip container
-     * @param {number} percent
-     * @param {boolean} isEmail
      */
     function applyGaugeState(progressEl, pctEl, labelEl, badgeEl, descEl, stripEl, percent, isEmail = false) {
         const offset = CIRCUMFERENCE - (percent / 100) * CIRCUMFERENCE;
@@ -141,8 +176,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         progressEl.style.stroke = color;
 
-        // Gauge label pill — icon + text
-        labelEl.innerHTML = `${iconSvg} ${labelText}`;
+        // Gauge label pill — icon + text (using textContent safely for text, and clear/append for icon)
+        labelEl.textContent = '';
+        const tempSpan = document.createElement('span');
+        tempSpan.innerHTML = iconSvg;
+        labelEl.appendChild(tempSpan.firstChild);
+        labelEl.appendChild(document.createTextNode(` ${labelText}`));
+        
         labelEl.style.cssText = '';   // reset any inline from previous run
         if (percent < 30) {
             labelEl.style.background = 'rgba(111,207,151,0.14)';
@@ -157,7 +197,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Card badge pill
         badgeEl.className = `card__badge ${badgeClass}`;
-        badgeEl.innerHTML = `${badgeIcon} ${labelText}`;
+        badgeEl.textContent = '';
+        const tempBadgeSpan = document.createElement('span');
+        tempBadgeSpan.innerHTML = badgeIcon;
+        badgeEl.appendChild(tempBadgeSpan.firstChild);
+        badgeEl.appendChild(document.createTextNode(` ${labelText}`));
 
         descEl.textContent = verdictText;
         stripEl.querySelector('.verdict-strip__icon').style.color = color;
@@ -229,7 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         });
         if (scanHistory.length > 20) scanHistory.pop();
-        localStorage.setItem('arcis_scans', JSON.stringify(scanHistory));
+        localStorage.setItem('arcis_scans', encryptData(JSON.stringify(scanHistory)));
         renderHistory();
     }
 
@@ -263,27 +307,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<svg width="8" height="8" viewBox="0 0 8 8" fill="none"><circle cx="4" cy="4" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 2.5l3 3M5.5 2.5l-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
                 : `<svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4.5l2 2 3-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-            const escapeHtml = (str) => {
-                if (!str) return '';
-                return str.replace(/&/g, "&amp;")
-                          .replace(/</g, "&lt;")
-                          .replace(/>/g, "&gt;")
-                          .replace(/"/g, "&quot;")
-                          .replace(/'/g, "&#039;");
-            };
-
             const escapedUrl = escapeHtml(item.url);
 
             el.innerHTML = `
                 <div class="history-item__top">
-                    <span class="history-pill ${pillClass}">${pillIcon} ${pillLabel} · ${item.risk}%</span>
+                    <span class="history-pill ${pillClass}"></span>
                     <span class="history-time">${item.timestamp}</span>
                 </div>
                 <div class="history-url" title="${escapedUrl}">${escapedUrl}</div>
             `;
+            
+            // Build the pill HTML contents safely
+            const pillSpan = el.querySelector('.history-pill');
+            const tempIconSpan = document.createElement('span');
+            tempIconSpan.innerHTML = pillIcon;
+            pillSpan.appendChild(tempIconSpan.firstChild);
+            pillSpan.appendChild(document.createTextNode(` ${pillLabel} · ${item.risk}%`));
 
             el.addEventListener('click', () => {
-                urlInput.value = item.url;
+                const cleanUrl = item.url.replace(/["'<>]/g, '');
+                urlInput.value = cleanUrl;
                 // Switch to URL tab if needed
                 activateTab('url-scanner-workspace');
                 form.dispatchEvent(new Event('submit'));
@@ -346,9 +389,20 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch(`${API_BASE}/api/analyze/url`, {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-API-Key': getApiKey()
+                },
                 body:    JSON.stringify({ url })
             });
+
+            if (res.status === 403 || res.status === 401) {
+                const userKey = prompt("Unauthorized: Please enter a valid Arcis API Key:");
+                if (userKey) {
+                    localStorage.setItem('arcis_api_key', userKey);
+                }
+                throw new Error("Unauthorized: API Key has been updated. Please scan again.");
+            }
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
@@ -409,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
             /* Brand alert (always first if present) */
             if (data.brand_alert?.impersonated) {
                 indicatorsList.appendChild(makeIndicator(
-                    `Brand Impersonation: imitating <strong>${data.brand_alert.brand.toUpperCase()}</strong> (${data.brand_alert.type})`,
+                    `Brand Impersonation: imitating ${data.brand_alert.brand.toUpperCase()} (${data.brand_alert.type})`,
                     'brand', count++
                 ));
             }
@@ -555,7 +609,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch(`${API_BASE}/api/analyze/email`, {
                 method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-API-Key': getApiKey()
+                },
                 body: JSON.stringify({
                     email:    sender,
                     reply_to: emailReplyInput.value.trim(),
@@ -566,6 +623,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     dmarc:    emailDmarcSelect.value
                 })
             });
+
+            if (res.status === 403 || res.status === 401) {
+                const userKey = prompt("Unauthorized: Please enter a valid Arcis API Key:");
+                if (userKey) {
+                    localStorage.setItem('arcis_api_key', userKey);
+                }
+                throw new Error("Unauthorized: API Key has been updated. Please scan again.");
+            }
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));

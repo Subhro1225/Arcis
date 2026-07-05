@@ -3,16 +3,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tabButtons = document.querySelectorAll('.p-tab');
     const tabPanes = document.querySelectorAll('.p-pane');
 
-    // Load backend URL configuration
+    // Load backend URL configuration and API Key
     let backendUrl = 'https://arcis-dvgq.onrender.com';
+    let apiKey = '';
     const settingsUrlInput = document.getElementById('settings-backend-url');
+    const settingsKeyInput = document.getElementById('settings-api-key');
     const settingsSaveBtn = document.getElementById('settings-save-btn');
+    const settingsStatus = document.getElementById('settings-status');
     const launchDashboardLink = document.getElementById('launch-dashboard-link');
 
+    function isValidUrl(string) {
+        try {
+            const url = new URL(string);
+            return url.protocol === 'http:' || url.protocol === 'https:';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function showSettingsStatus(msg, color) {
+        if (settingsStatus) {
+            settingsStatus.textContent = msg;
+            settingsStatus.style.color = color;
+            settingsStatus.style.display = 'block';
+            setTimeout(() => {
+                settingsStatus.style.display = 'none';
+            }, 3000);
+        }
+    }
+
     try {
-        const stored = await chrome.storage.local.get('backend_url');
+        const stored = await chrome.storage.local.get(['backend_url', 'api_key']);
         if (stored.backend_url) {
             backendUrl = stored.backend_url;
+        }
+        if (stored.api_key) {
+            apiKey = stored.api_key;
         }
     } catch (e) {
         console.error(e);
@@ -21,20 +47,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (settingsUrlInput) {
         settingsUrlInput.value = backendUrl;
     }
+    if (settingsKeyInput) {
+        settingsKeyInput.value = apiKey;
+    }
     if (launchDashboardLink) {
         launchDashboardLink.href = backendUrl;
     }
 
-    if (settingsSaveBtn && settingsUrlInput) {
+    if (settingsSaveBtn && settingsUrlInput && settingsKeyInput) {
         settingsSaveBtn.addEventListener('click', async () => {
-            const val = settingsUrlInput.value.trim().replace(/\/$/, '');
-            if (!val) return;
-            backendUrl = val;
-            await chrome.storage.local.set({ backend_url: val });
-            if (launchDashboardLink) {
-                launchDashboardLink.href = val;
+            const urlVal = settingsUrlInput.value.trim().replace(/\/$/, '');
+            const keyVal = settingsKeyInput.value.trim();
+            
+            if (!isValidUrl(urlVal)) {
+                showSettingsStatus('Error: Invalid API Endpoint URL. Must be http:// or https://', '#ef4444');
+                return;
             }
-            alert('API endpoint saved successfully!');
+            
+            backendUrl = urlVal;
+            apiKey = keyVal;
+            await chrome.storage.local.set({ backend_url: urlVal, api_key: keyVal });
+            if (launchDashboardLink) {
+                launchDashboardLink.href = urlVal;
+            }
+            showSettingsStatus('Settings saved successfully!', '#ABD1C6');
         });
     }
 
@@ -98,6 +134,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     scanBtn.addEventListener('click', async () => {
         if (!currentTabUrl) return;
 
+        if (!apiKey) {
+            findingsList.innerHTML = `<li style="color: #ef4444; font-weight: 600;">Configuration Required: Please set your API Key in the Settings tab to authenticate requests.</li>`;
+            riskScoreEl.textContent = 'N/A';
+            statusAlertEl.textContent = 'CONFIG ERROR';
+            statusAlertEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+            statusAlertEl.style.color = '#ef4444';
+            resultState.classList.remove('hidden');
+            return;
+        }
+
         scanBtn.disabled = true;
         loadingState.classList.remove('hidden');
         resultState.classList.add('hidden');
@@ -106,7 +152,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const response = await fetch(`${backendUrl}/api/analyze/url`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-API-Key': apiKey
                 },
                 body: JSON.stringify({ url: currentTabUrl })
             });
@@ -242,7 +289,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } catch (error) {
             console.error(error);
-            alert(`Unable to contact scan backend. Ensure API node is running at ${backendUrl}.`);
+            findingsList.innerHTML = `<li style="color: #ef4444; font-weight: 600;">Error: Unable to contact scan backend at ${backendUrl}. Ensure API node is running and configured correctly.</li>`;
+            riskScoreEl.textContent = 'N/A';
+            statusAlertEl.textContent = 'SCAN FAILED';
+            statusAlertEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+            statusAlertEl.style.color = '#ef4444';
+            resultState.classList.remove('hidden');
         } finally {
             loadingState.classList.add('hidden');
             scanBtn.disabled = false;
@@ -252,6 +304,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- 4. Email Scanner: Run Scan ---
     emailForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        if (!apiKey) {
+            emailFindingsList.innerHTML = `<li style="color: #ef4444; font-weight: 600;">Configuration Required: Please set your API Key in the Settings tab to authenticate requests.</li>`;
+            emailRiskScoreEl.textContent = 'N/A';
+            emailStatusAlertEl.textContent = 'CONFIG ERROR';
+            emailStatusAlertEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+            emailStatusAlertEl.style.color = '#ef4444';
+            emailResultState.classList.remove('hidden');
+            return;
+        }
 
         const sender = document.getElementById('email-sender').value.trim();
         const subject = document.getElementById('email-subject').value.trim();
@@ -268,7 +330,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const response = await fetch(`${backendUrl}/api/analyze/email`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-API-Key': apiKey
                 },
                 body: JSON.stringify({
                     email: sender,
@@ -322,7 +385,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         } catch (error) {
             console.error(error);
-            alert(`Unable to contact scan backend. Ensure API node is running at ${backendUrl}.`);
+            emailFindingsList.innerHTML = `<li style="color: #ef4444; font-weight: 600;">Error: Unable to contact scan backend at ${backendUrl}. Ensure API node is running and configured correctly.</li>`;
+            emailRiskScoreEl.textContent = 'N/A';
+            emailStatusAlertEl.textContent = 'SCAN FAILED';
+            emailStatusAlertEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+            emailStatusAlertEl.style.color = '#ef4444';
+            emailResultState.classList.remove('hidden');
         } finally {
             emailLoadingState.classList.add('hidden');
             emailScanBtn.disabled = false;

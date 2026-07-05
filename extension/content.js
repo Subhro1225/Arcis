@@ -462,44 +462,32 @@
       findingsList.appendChild(li);
     }
 
-    // Build Base64 report payload to pass securely to the localhost dashboard page
-    if (emailData) {
-      const reportPayload = {
-        subject: emailData.subject,
-        sender: emailData.sender,
-        body: emailData.body,
-        cc: emailData.cc || [],
-        risk_score_pct: risk,
-        reasons: reasons,
-        links: data.scanned_links || (emailData.links || []).map(url => ({ url: url, risk: 0 }))
-      };
-      
-      try {
-        const base64Data = btoa(unescape(encodeURIComponent(JSON.stringify(reportPayload))));
-        const reportLink = root.querySelector('#arcis-more-link');
-        if (reportLink) {
-          let msgSent = false;
-          if (isContextValid()) {
-            try {
-              chrome.runtime.sendMessage({ action: 'get_backend_url' }, response => {
-                  if (chrome.runtime.lastError) {
-                    reportLink.href = `https://arcis-dvgq.onrender.com/report.html?data=${encodeURIComponent(base64Data)}`;
-                    return;
-                  }
-                  const url = (response && response.url) ? response.url : 'https://arcis-dvgq.onrender.com';
-                  reportLink.href = `${url}/report.html?data=${encodeURIComponent(base64Data)}`;
-              });
-              msgSent = true;
-            } catch (e) {
-              // Ignore context invalidated
-            }
-          }
-          if (!msgSent) {
-            reportLink.href = `https://arcis-dvgq.onrender.com/report.html?data=${encodeURIComponent(base64Data)}`;
-          }
+    // Setup report link to point to report.html?id=xxx
+    const reportLink = root.querySelector('#arcis-more-link');
+    if (reportLink) {
+      const reportId = data.report_id;
+      let msgSent = false;
+      if (isContextValid()) {
+        try {
+          chrome.runtime.sendMessage({ action: 'get_backend_url' }, response => {
+              if (chrome.runtime.lastError) {
+                const fallbackUrl = 'https://arcis-dvgq.onrender.com';
+                reportLink.href = reportId ? `${fallbackUrl}/report.html?id=${reportId}` : `${fallbackUrl}/`;
+                return;
+              }
+              const url = (response && response.url) ? response.url : 'https://arcis-dvgq.onrender.com';
+              if (url && url.startsWith('https://')) {
+                reportLink.href = reportId ? `${url}/report.html?id=${reportId}` : `${url}/`;
+              }
+          });
+          msgSent = true;
+        } catch (e) {
+          // Ignore context invalidated
         }
-      } catch (err) {
-        console.error('Failed to encode report payload:', err);
+      }
+      if (!msgSent) {
+        const fallbackUrl = 'https://arcis-dvgq.onrender.com';
+        reportLink.href = reportId ? `${fallbackUrl}/report.html?id=${reportId}` : `${fallbackUrl}/`;
       }
     }
 
