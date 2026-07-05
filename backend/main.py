@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from pythonjsonlogger import jsonlogger
@@ -31,6 +32,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute", "5/
 app = FastAPI(title="Arcis Multi-Model API Node")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Configure CORS (avoid wildcards in production)
 allowed_origins_raw = os.environ.get("ARCIS_ALLOWED_ORIGINS", "")
@@ -51,15 +53,35 @@ app.add_middleware(
 # API Authentication configuration
 from fastapi.security import APIKeyHeader
 from fastapi import Depends
-API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=True)
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 API_KEY = os.environ.get("ARCIS_API_KEY")
 if not API_KEY:
     raise RuntimeError("CRITICAL CONFIGURATION ERROR: ARCIS_API_KEY environment variable must be set.")
 
-async def verify_api_key(api_key: str = Depends(API_KEY_HEADER)):
-    if api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid API Key")
-    return api_key
+async def verify_api_key(request: Request, api_key: Optional[str] = Depends(API_KEY_HEADER)):
+    # 1. If key matches exactly, allow request
+    if api_key and api_key == API_KEY:
+        return api_key
+
+    # 2. Check if request is same-origin or localhost bypass
+    referer = request.headers.get("referer")
+    origin = request.headers.get("origin")
+    host = request.headers.get("host") or f"localhost:{os.environ.get('PORT', 5001)}"
+
+    # Determine caller netloc
+    from urllib.parse import urlparse
+    caller_netloc = ""
+    if referer:
+        caller_netloc = urlparse(referer).netloc
+    elif origin:
+        caller_netloc = urlparse(origin).netloc
+
+    # Bypass auth if Referer/Origin matches the current Host, or if caller is localhost
+    if caller_netloc:
+        if caller_netloc == host or caller_netloc.startswith("localhost:") or caller_netloc.startswith("127.0.0.1:"):
+            return "same-origin-bypass"
+
+    raise HTTPException(status_code=403, detail="Invalid or missing API Key")
 
 # Add Security Headers Middleware (Strict CSP without unsafe-inline)
 @app.middleware("http")
@@ -169,6 +191,15 @@ async def health_check(request: Request):
             "framework": "FastAPI"
         }
     return {"status": "healthy"}
+
+@app.get("/api/config")
+async def get_client_config():
+    """
+    Intentionally disabled returning the real API key to prevent exposing it publicly.
+    Same-origin/localhost requests bypass the key check, while external requests (like the Chrome Extension)
+    use the user-configured API key in the extension's settings.
+    """
+    return {"api_key_required": True, "api_key": None}
 
 import uuid
 reports_db = {}

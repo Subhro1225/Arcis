@@ -3,12 +3,27 @@
    UI interactions, API calls, history management
    ═══════════════════════════════════════════════════════════ */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
     /* ── Constants ─────────────────────────────────────────── */
     const API_BASE      = window.location.origin;
-    const getApiKey     = () => localStorage.getItem('arcis_api_key') || 'arcis-default-secret-key-2026';
     const CIRCUMFERENCE = 2 * Math.PI * 80; // r=80 → 502.65
+
+    /* ── Bootstrap API key from backend (never hardcoded in client JS) ── */
+    let _apiKey = localStorage.getItem('arcis_api_key') || '';
+    if (!_apiKey) {
+        try {
+            const cfgRes = await fetch(`${API_BASE}/api/config`);
+            if (cfgRes.ok) {
+                const cfg = await cfgRes.json();
+                _apiKey = cfg.api_key || '';
+                if (_apiKey) localStorage.setItem('arcis_api_key', _apiKey);
+            }
+        } catch (_) {
+            // Backend unreachable — key stays empty, requests will show 403 prompt
+        }
+    }
+    const getApiKey = () => localStorage.getItem('arcis_api_key') || _apiKey;
 
     /* ── URL Scanner elements ──────────────────────────────── */
     const form          = document.getElementById('analyze-form');

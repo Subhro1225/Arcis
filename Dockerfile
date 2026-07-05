@@ -22,6 +22,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
+# Create a non-root system group and user
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser \
+    && chown -R appuser:appgroup /app
+
+# Switch to the non-root user
+USER appuser
+
 # Expose the API port
 EXPOSE 5001
 
