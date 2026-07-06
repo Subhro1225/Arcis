@@ -1,6 +1,8 @@
 import os
 import sys
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
