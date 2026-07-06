@@ -593,7 +593,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     row.innerHTML = `
                         <div class="ranking-row__label">${label}</div>
                         <div class="ranking-row__bar">
-                            <div class="ranking-row__fill" style="width:${pct}%"></div>
+                            <div class="ranking-row__fill ranking-row__fill--${tone}" style="width:${pct}%"></div>
                         </div>
                         <div class="ranking-row__pct">${isRisky ? '+' : '−'}${pct}%</div>
                     `;
@@ -701,7 +701,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     row.innerHTML = `
                         <div class="ranking-row__label">${componentLabels[key] || key}</div>
                         <div class="ranking-row__bar">
-                            <div class="ranking-row__fill" style="width:${pct}%"></div>
+                            <div class="ranking-row__fill ranking-row__fill--${tone}" style="width:${pct}%"></div>
                         </div>
                         <div class="ranking-row__pct">${pct}%</div>
                     `;
