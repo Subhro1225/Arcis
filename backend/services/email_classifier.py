@@ -102,10 +102,114 @@ def verify_email_dns(domain: str) -> dict:
 
 try:
     from services.url_classifier import predict_url
-    from services.confidence_scorer import score_analysis_confidence
+    from services.confidence_scorer import score_analysis_confidence, ConfidenceScorer
 except ImportError:
     from url_classifier import predict_url
-    from confidence_scorer import score_analysis_confidence
+    from confidence_scorer import score_analysis_confidence, ConfidenceScorer
+
+
+# Nominal weights for sender/authentication factors. These sit outside the
+# ConfidenceScorer's weighted-average model (they're blended in via max(),
+# not summed) but we still need a consistent magnitude to rank them
+# alongside the ML/URL/heuristic components in the risk signal breakdown.
+SENDER_SIGNAL_WEIGHTS = {
+    'dns_mx': 0.8,
+    'dns_spf': 0.4,
+    'dns_dmarc': 0.4,
+    'free_provider_keyword': 0.7,
+    'auth_headers': 0.3,   # multiplied by number of failing headers, capped at 0.9
+    'reply_to_mismatch': 0.5
+}
+
+
+def _round_signal(value: float) -> float:
+    return round(float(value), 4)
+
+
+def build_email_risk_signals(score_result, sender_signals: list, component_text: dict) -> dict:
+    """
+    Combines the ConfidenceScorer's weighted component contributions with the
+    sender/authentication signals into a single ranked breakdown, formatted
+    the same way as url_classifier.predict_url()'s risk_signals: an
+    'increasing' group (factors pushing toward phishing) and a 'decreasing'
+    group (factors pushing toward legitimate), each sorted by magnitude of
+    influence, plus a total_influence sum per group.
+
+    component_text: {component_name: {"label": str, "bad": str, "good": str}}
+    """
+    all_signals = []
+
+    # 1. Main weighted components from the ConfidenceScorer
+    for component, contribution in score_result.weighted_contributions.items():
+        weight = score_result.weights_used.get(component, 0.0)
+        score = score_result.component_scores.get(component, 0.0)
+        text = component_text.get(component, {})
+        label = text.get("label", component.replace("_", " ").title())
+        if score > 0:
+            all_signals.append({
+                "feature": component,
+                "label": label,
+                "description": text.get("bad", f"{label} contributed to the phishing score."),
+                "impact": _round_signal(contribution),
+                "value": _round_signal(score)
+            })
+        else:
+            # Component came back clean - counts as a reassuring (decreasing) signal
+            all_signals.append({
+                "feature": component,
+                "label": label,
+                "description": text.get("good", f"{label} showed no risk indicators."),
+                "impact": _round_signal(-weight),
+                "value": _round_signal(score)
+            })
+
+    # 2. Sender / authentication side signals, already resolved by the caller
+    all_signals.extend(sender_signals)
+
+    increasing = sorted(
+        [s for s in all_signals if s["impact"] > 0],
+        key=lambda s: s["impact"], reverse=True
+    )
+    decreasing = sorted(
+        [s for s in all_signals if s["impact"] < 0],
+        key=lambda s: s["impact"]
+    )
+
+    return {
+        "increasing": {
+            "total_influence": _round_signal(sum(s["impact"] for s in increasing)),
+            "signals": increasing
+        },
+        "decreasing": {
+            "total_influence": _round_signal(sum(s["impact"] for s in decreasing)),
+            "signals": decreasing
+        }
+    }
+
+
+def build_email_explanations(risk_signals: dict, is_phishing: bool, limit: int = 5) -> list:
+    """
+    Ranked, human-readable explanation list - same shape as
+    url_classifier.build_explanations(): [{title, description, score}, ...],
+    sorted by magnitude of influence, biased toward whichever direction
+    matches the final verdict (mirrors how the URL classifier prefers
+    'increasing' signals for phishing verdicts and 'decreasing' for
+    legitimate ones).
+    """
+    primary = risk_signals["increasing"]["signals"] if is_phishing else risk_signals["decreasing"]["signals"]
+    fallback = risk_signals["decreasing"]["signals"] if is_phishing else risk_signals["increasing"]["signals"]
+
+    ordered = primary + fallback
+    explanations = []
+    for s in ordered:
+        if len(explanations) >= limit:
+            break
+        explanations.append({
+            "title": s.get("label") or s["feature"].replace("_", " ").title(),
+            "description": s.get("description", ""),
+            "score": abs(s["impact"])
+        })
+    return explanations
 
 def predict_sender_email(
     email_address: str,
@@ -293,27 +397,98 @@ def predict_sender_email(
 
     # 8. Calculate Sender Reputation/Authentication Threat Score
     sender_risk = 0.0
+    sender_signals = []  # ranked risk-signal entries for these sender/auth factors
+
     if not is_free_provider:
         if not dns_status.get("has_mx", True):
-            sender_risk = max(sender_risk, 0.8)
+            sender_risk = max(sender_risk, SENDER_SIGNAL_WEIGHTS['dns_mx'])
+            sender_signals.append({
+                "feature": "dns_mx", "label": "Missing Mail Server Records",
+                "description": "Sender domain has no active MX mail server records.",
+                "impact": SENDER_SIGNAL_WEIGHTS['dns_mx'], "value": False
+            })
+        else:
+            sender_signals.append({
+                "feature": "dns_mx", "label": "Valid Mail Server Records",
+                "description": "Sender domain has active MX mail server records.",
+                "impact": -SENDER_SIGNAL_WEIGHTS['dns_mx'], "value": True
+            })
+
         if not dns_status.get("has_spf", True) and spf == "none":
-            sender_risk = max(sender_risk, 0.4)
+            sender_risk = max(sender_risk, SENDER_SIGNAL_WEIGHTS['dns_spf'])
+            sender_signals.append({
+                "feature": "dns_spf", "label": "Missing SPF Record",
+                "description": "Sender domain lacks SPF authentication record.",
+                "impact": SENDER_SIGNAL_WEIGHTS['dns_spf'], "value": False
+            })
+        elif dns_status.get("has_spf") or spf == "pass":
+            sender_signals.append({
+                "feature": "dns_spf", "label": "SPF Configured",
+                "description": "Sender domain has a valid SPF authentication record.",
+                "impact": -SENDER_SIGNAL_WEIGHTS['dns_spf'], "value": True
+            })
+
         if not dns_status.get("has_dmarc", True) and dmarc == "none":
-            sender_risk = max(sender_risk, 0.4)
+            sender_risk = max(sender_risk, SENDER_SIGNAL_WEIGHTS['dns_dmarc'])
+            sender_signals.append({
+                "feature": "dns_dmarc", "label": "Missing DMARC Policy",
+                "description": "Sender domain lacks DMARC configuration policy.",
+                "impact": SENDER_SIGNAL_WEIGHTS['dns_dmarc'], "value": False
+            })
+        elif dns_status.get("has_dmarc") or dmarc == "pass":
+            sender_signals.append({
+                "feature": "dns_dmarc", "label": "DMARC Configured",
+                "description": "Sender domain has a valid DMARC configuration policy.",
+                "impact": -SENDER_SIGNAL_WEIGHTS['dns_dmarc'], "value": True
+            })
     else:
         # Check local part suspicious keywords
         suspicious_words = ['secure', 'support', 'service', 'verify', 'update', 'login', 'admin', 'billing', 'paypal', 'bank']
         flagged_words = [w for w in suspicious_words if w in local_part.lower()]
         if flagged_words:
-            sender_risk = max(sender_risk, 0.7)
+            sender_risk = max(sender_risk, SENDER_SIGNAL_WEIGHTS['free_provider_keyword'])
+            sender_signals.append({
+                "feature": "free_provider_keyword", "label": "Suspicious Free-Provider Address",
+                "description": f"Free email local part contains suspicious keywords: {', '.join(w.upper() for w in flagged_words)}",
+                "impact": SENDER_SIGNAL_WEIGHTS['free_provider_keyword'], "value": True
+            })
+        else:
+            sender_signals.append({
+                "feature": "free_provider_keyword", "label": "No Brand Keywords in Address",
+                "description": "Free-provider address does not contain brand-impersonating keywords.",
+                "impact": -SENDER_SIGNAL_WEIGHTS['free_provider_keyword'], "value": False
+            })
 
     # Header authentication status
     auth_fails = sum(1 for status_val in [spf, dkim, dmarc] if status_val == "fail")
     if auth_fails > 0:
-        sender_risk = max(sender_risk, 0.3 * auth_fails)
-        
+        auth_impact = min(SENDER_SIGNAL_WEIGHTS['auth_headers'] * auth_fails, 0.9)
+        sender_risk = max(sender_risk, auth_impact)
+        sender_signals.append({
+            "feature": "auth_headers", "label": "Authentication Header Failure",
+            "description": f"{auth_fails} of 3 email authentication headers (SPF/DKIM/DMARC) failed verification.",
+            "impact": auth_impact, "value": auth_fails
+        })
+    elif spf == "pass" and dkim == "pass" and dmarc == "pass":
+        sender_signals.append({
+            "feature": "auth_headers", "label": "Authentication Headers Passed",
+            "description": "SPF, DKIM, and DMARC headers all passed verification.",
+            "impact": -SENDER_SIGNAL_WEIGHTS['auth_headers'] * 3, "value": 0
+        })
+
     if sender_domain and reply_to_domain and sender_domain != reply_to_domain:
-        sender_risk = max(sender_risk, 0.5)
+        sender_risk = max(sender_risk, SENDER_SIGNAL_WEIGHTS['reply_to_mismatch'])
+        sender_signals.append({
+            "feature": "reply_to_mismatch", "label": "Reply-To Domain Mismatch",
+            "description": "Sender domain and Reply-To domain do not match.",
+            "impact": SENDER_SIGNAL_WEIGHTS['reply_to_mismatch'], "value": True
+        })
+    elif reply_to_domain and sender_domain == reply_to_domain:
+        sender_signals.append({
+            "feature": "reply_to_mismatch", "label": "Reply-To Domain Matches",
+            "description": "Reply-To domain matches the sender domain.",
+            "impact": -SENDER_SIGNAL_WEIGHTS['reply_to_mismatch'], "value": False
+        })
 
     # Blend overall confidence with sender/header-level risk
     final_score = max(score_result.overall_confidence, sender_risk)
@@ -330,10 +505,47 @@ def predict_sender_email(
     if not reasons:
         reasons.append("Email matches standard sender authentication patterns and contains no suspicious signals.")
 
+    # 9. Build ranked risk signal breakdown (same shape as url_classifier's risk_signals/explanations)
+    component_text = {
+        'ml_classifier': {
+            "label": "ML Classifier",
+            "bad": f"XGBoost ONNX classifier flagged this email as phishing with {model_score*100:.1f}% confidence." if ml_used
+                   else "ML classifier signal was unavailable for this email.",
+            "good": f"XGBoost ONNX classifier scored this email as legitimate ({model_score*100:.1f}% phishing probability)." if ml_used
+                    else "ML classifier was unavailable, so no ML-based signal was applied."
+        },
+        'url_analysis': {
+            "label": "Embedded URL Analysis",
+            "bad": f"{high_risk_urls + suspicious_urls} of {len(unique_urls)} scanned link(s) were flagged as suspicious or high-risk.",
+            "good": f"All {len(unique_urls)} scanned link(s) in the body came back clean." if unique_urls
+                    else "No embedded links were found in the email body."
+        },
+        'sensitive_request': {
+            "label": "Sensitive Info Request",
+            "bad": "Email requests sensitive information (credentials, payment, or identity) alongside urgency or links.",
+            "good": "Email does not request sensitive information such as credentials or payment details."
+        },
+        'polite_request': {
+            "label": "Generic Greeting Pattern",
+            "bad": "Uses a generic formal greeting (e.g. 'Dear Customer') paired with a call to action.",
+            "good": "No generic/impersonal greeting pattern detected."
+        },
+        'short_email_risk': {
+            "label": "Short/Urgent Email Pattern",
+            "bad": f"Short email body ({len(body)} chars) combined with urgency language or links, a common phishing template.",
+            "good": f"Email body length ({len(body)} chars) and tone don't match typical short-phishing templates."
+        }
+    }
+
+    risk_signals = build_email_risk_signals(score_result, sender_signals, component_text)
+    explanations = build_email_explanations(risk_signals, is_phishing)
+
     return {
         "email": email,
         "is_phishing": is_phishing,
         "risk_score_pct": final_score_pct,
+        "risk_signals": risk_signals,
+        "explanations": explanations,
         "details": {
             "is_free_provider": is_free_provider,
             "reasons": reasons,
@@ -344,5 +556,3 @@ def predict_sender_email(
         },
         "dns_checks": dns_status
     }
-
-

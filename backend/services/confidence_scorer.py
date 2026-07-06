@@ -19,13 +19,19 @@ class ScoreResult:
         risk_level: str,
         component_scores: Dict[str, float],
         reasoning: str,
-        is_phishing: bool
+        is_phishing: bool,
+        weighted_contributions: Optional[Dict[str, float]] = None,
+        weights_used: Optional[Dict[str, float]] = None
     ):
         self.overall_confidence = overall_confidence  # Float between 0.0 and 1.0
         self.risk_level = risk_level                  # String: 'low', 'medium', or 'high'
         self.component_scores = component_scores      # Dictionary of individual scores
         self.reasoning = reasoning                    # String text explaining the result
         self.is_phishing = is_phishing                # Boolean flag (True/False)
+        # Raw score * weight per component (sums to weighted_sum, not yet normalized)
+        self.weighted_contributions = weighted_contributions or {}
+        # Actual weight applied to each component after redistribution
+        self.weights_used = weights_used or {}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to a JSON serializable dictionary."""
@@ -34,7 +40,9 @@ class ScoreResult:
             "risk_level": self.risk_level,
             "component_scores": self.component_scores,
             "reasoning": self.reasoning,
-            "is_phishing": self.is_phishing
+            "is_phishing": self.is_phishing,
+            "weighted_contributions": self.weighted_contributions,
+            "weights_used": self.weights_used
         }
 
 
@@ -70,6 +78,8 @@ def score_analysis_confidence(
     weights = custom_weights if custom_weights else scorer.weights
     
     component_scores: Dict[str, float] = {}
+    weighted_contributions: Dict[str, float] = {}
+    weights_used: Dict[str, float] = {}
     total_weight_used = 0.0
     weighted_sum = 0.0
     
@@ -96,7 +106,7 @@ def score_analysis_confidence(
         
         # 2. Evaluate URL Analysis Output
         elif component == 'url_analysis':
-            summary = data.get('risk_score_pct', 0) / 100.0
+            summary = data.get('summary', {})
             total_urls = summary.get('total_urls', 0)
             if total_urls > 0:
                 bad_urls = summary.get('suspicious_urls', 0) + summary.get('high_risk_urls', 0)
@@ -111,7 +121,10 @@ def score_analysis_confidence(
         component_scores[component] = score
         
         # Core Formula: sum(score * weight)
-        weighted_sum += score * weight
+        contribution = score * weight
+        weighted_contributions[component] = contribution
+        weights_used[component] = weight
+        weighted_sum += contribution
         total_weight_used += weight
         
     # Score Normalization:
@@ -139,5 +152,7 @@ def score_analysis_confidence(
         risk_level=risk_level,
         component_scores=component_scores,
         reasoning=reasoning,
-        is_phishing=is_phishing
+        is_phishing=is_phishing,
+        weighted_contributions=weighted_contributions,
+        weights_used=weights_used
     )

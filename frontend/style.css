@@ -1495,18 +1495,16 @@ img, svg { display: block; }
 .ranking-row__fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
 .ranking-row__pct { text-align: right; color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
 
-.ranking-row__bar {
-    height: 8px;
-    background: var(--safe);   /* track is now green by default */
-    border-radius: 4px;
-    overflow: hidden;
+/* Fill color follows which group the bar belongs to: red for
+   risk-increasing factors, green for risk-decreasing factors. */
+#url-risk-ranking-increasing .ranking-row__fill,
+#email-risk-ranking-increasing .ranking-row__fill {
+    background: var(--danger);
 }
 
-.ranking-row__fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.6s ease;
-    background: var(--danger); /* the filled portion is always red */
+#url-risk-ranking-decreasing .ranking-row__fill,
+#email-risk-ranking-decreasing .ranking-row__fill {
+    background: var(--safe);
 }
 
 /* Risk Factor Ranking — grouped headers (increasing / decreasing) */

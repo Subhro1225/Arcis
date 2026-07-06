@@ -208,6 +208,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Renders a ranked list of risk_signals entries (either the 'increasing'
+     * or 'decreasing' group from the API) into a container, as horizontal
+     * bars scaled relative to the largest impact in the group.
+     *
+     * getLabel(item) resolves the display label for a signal - the URL
+     * scanner groups raw SHAP features via a feature->label map, while the
+     * email classifier's signals already carry a human-readable `label`.
+     */
+    function renderRankingGroup(container, signals, getLabel, signPrefix = '') {
+        if (!container) return;
+        container.innerHTML = "";
+
+        // Group signals by their display label, summing magnitude for duplicates
+        const grouped = {};
+        signals.forEach(item => {
+            const label = getLabel(item);
+            if (!grouped[label]) {
+                grouped[label] = { label, impact: 0 };
+            }
+            grouped[label].impact += Math.abs(item.impact);
+        });
+
+        const groupedSignals = Object.values(grouped)
+            .sort((a, b) => b.impact - a.impact);
+
+        const maxImpact = Math.max(...groupedSignals.map(s => s.impact), 0.0001);
+
+        groupedSignals.forEach(item => {
+            const pct = Math.round((item.impact / maxImpact) * 100);
+            const row = document.createElement("div");
+            row.className = "ranking-row";
+            row.innerHTML = `
+                <div class="ranking-row__label">${item.label}</div>
+                <div class="ranking-row__bar">
+                    <div class="ranking-row__fill" style="width:${pct}%"></div>
+                </div>
+                <div class="ranking-row__pct">${signPrefix}${pct}%</div>
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    /**
      * Toggle loading state on a submit button.
      */
     function setLoading(btn, loading, defaultText) {
@@ -567,44 +610,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const increaseTotalEl   = document.getElementById('url-ranking-increase-total');
             const decreaseTotalEl   = document.getElementById('url-ranking-decrease-total');
 
-            function renderRankingGroup(container, signals, isRisky) {
-                if (!container) return;
-                container.innerHTML = "";
-
-                // Group SHAP features by their display label
-                const grouped = {};
-                signals.forEach(item => {
-                    const label = featureLabels[item.feature] || item.feature.replace(/_/g, " ");
-                    if (!grouped[label]) {
-                        grouped[label] = { label, impact: 0 };
-                    }
-                    grouped[label].impact += Math.abs(item.impact);
-                });
-
-                const groupedSignals = Object.values(grouped)
-                    .sort((a, b) => b.impact - a.impact);
-
-                const maxImpact = Math.max(...groupedSignals.map(s => s.impact), 0.0001);
-
-                groupedSignals.forEach(item => {
-                    const pct = Math.round((item.impact / maxImpact) * 100);
-                    const row = document.createElement("div");
-                    row.className = "ranking-row";
-                    row.innerHTML = `
-                        <div class="ranking-row__label">${item.label}</div>
-                        <div class="ranking-row__bar">
-                            <div class="ranking-row__fill" style="width:${pct}%"></div>
-                        </div>
-                        <div class="ranking-row__pct">${isRisky ? "+" : "−"}${pct}%</div>
-                    `;
-                    container.appendChild(row);
-                });
-            }
+            const urlLabelResolver = (item) => featureLabels[item.feature] || item.feature.replace(/_/g, " ");
 
             // Only show the group matching the verdict — increasing factors
             // for a phishing verdict, decreasing factors for a safe verdict.
             if (data.is_phishing) {
-                renderRankingGroup(increaseContainer, increasingSignals, true);
+                renderRankingGroup(increaseContainer, increasingSignals, urlLabelResolver, '+');
                 if (decreaseContainer) decreaseContainer.innerHTML = '';
                 if (increaseTotalEl) {
                     increaseTotalEl.textContent =
@@ -612,7 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (decreaseTotalEl) decreaseTotalEl.textContent = '—';
             } else {
-                renderRankingGroup(decreaseContainer, decreasingSignals, false);
+                renderRankingGroup(decreaseContainer, decreasingSignals, urlLabelResolver, '−');
                 if (increaseContainer) increaseContainer.innerHTML = '';
                 if (decreaseTotalEl) {
                     decreaseTotalEl.textContent =
@@ -685,37 +696,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 data.details?.is_free_provider ? 'YES' : 'NO',
                 data.details?.is_free_provider ? 'warn' : 'safe');
 
-            /* Ranked risk factor breakdown (from confidence_scorer) */
-            const componentScores = data.details?.component_scores || {};
-            const componentLabels = {
-                ml_classifier:     'ML Classifier',
-                url_analysis:      'Embedded URL Analysis',
-                sensitive_request: 'Sensitive Info Request',
-                polite_request:    'Generic Greeting Pattern',
-                short_email_risk:  'Short/Urgent Email Pattern'
-            };
+            /* Ranked risk factor breakdown - same two-panel pattern as the URL
+               scanner: show the group matching the verdict (risk-increasing
+               factors for a phishing verdict, risk-decreasing/safe factors
+               for a legitimate verdict), scaled by real weighted impact. */
+            const emailRiskSignals = data.risk_signals || { increasing: { signals: [] }, decreasing: { signals: [] } };
+            const emailIncreasing = emailRiskSignals.increasing?.signals || [];
+            const emailDecreasing = emailRiskSignals.decreasing?.signals || [];
+            const emailLabelResolver = (item) => item.label || item.feature.replace(/_/g, " ");
 
-            const rankedComponents = Object.entries(componentScores)
-                .sort((a, b) => b[1] - a[1]);
+            const emailIncreaseContainer = document.getElementById('email-risk-ranking-increasing');
+            const emailDecreaseContainer = document.getElementById('email-risk-ranking-decreasing');
+            const emailIncreaseTotalEl   = document.getElementById('email-ranking-increase-total');
+            const emailDecreaseTotalEl   = document.getElementById('email-ranking-decrease-total');
 
-            const rankingContainer = document.getElementById('email-risk-ranking');
-            if (rankingContainer) {
-                rankingContainer.innerHTML = '';
-                rankedComponents.forEach(([key, score]) => {
-                    const pct = Math.round(score * 100);
-                    const tone = pct >= 70 ? 'danger' : pct >= 30 ? 'warn' : 'safe';
-
-                    const row = document.createElement('div');
-                    row.className = 'ranking-row';
-                    row.innerHTML = `
-                        <div class="ranking-row__label">${componentLabels[key] || key}</div>
-                        <div class="ranking-row__bar">
-                            <div class="ranking-row__fill" style="width:${pct}%"></div>
-                        </div>
-                        <div class="ranking-row__pct">${pct}%</div>
-                    `;
-                    rankingContainer.appendChild(row);
-                });
+            if (data.is_phishing) {
+                renderRankingGroup(emailIncreaseContainer, emailIncreasing, emailLabelResolver, '+');
+                if (emailDecreaseContainer) emailDecreaseContainer.innerHTML = '';
+                if (emailIncreaseTotalEl) {
+                    emailIncreaseTotalEl.textContent =
+                        `+${(emailRiskSignals.increasing?.total_influence ?? 0).toFixed(2)}`;
+                }
+                if (emailDecreaseTotalEl) emailDecreaseTotalEl.textContent = '—';
+            } else {
+                renderRankingGroup(emailDecreaseContainer, emailDecreasing, emailLabelResolver, '−');
+                if (emailIncreaseContainer) emailIncreaseContainer.innerHTML = '';
+                if (emailDecreaseTotalEl) {
+                    emailDecreaseTotalEl.textContent =
+                        `${(emailRiskSignals.decreasing?.total_influence ?? 0).toFixed(2)}`;
+                }
+                if (emailIncreaseTotalEl) emailIncreaseTotalEl.textContent = '—';
             }
 
             /* Risk indicators */
@@ -726,8 +736,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 emailIndicatorsList.appendChild(makeIndicator('No immediate threat anomalies detected.', 'safe', 0));
                 emailIndicatorCount.textContent = '0 signals';
             } else {
+                const reasonTone = data.is_phishing ? 'danger' : 'safe';
                 reasons.forEach((reason, i) => {
-                    emailIndicatorsList.appendChild(makeIndicator(reason, 'danger', i));
+                    emailIndicatorsList.appendChild(makeIndicator(reason, reasonTone, i));
                 });
                 emailIndicatorCount.textContent = `${reasons.length} signal${reasons.length !== 1 ? 's' : ''}`;
             }
