@@ -235,7 +235,11 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     function makeIndicator(text, tone = 'danger', index = 0) {
         const item = document.createElement('div');
-        item.className = `indicator-item${tone === 'brand' ? ' indicator-item--brand' : ''}`;
+        const itemToneClass = tone === 'brand' ? 'indicator-item--brand'
+                    : tone === 'safe'  ? 'indicator-item--safe'
+                    : tone === 'danger' ? 'indicator-item--danger'
+                    : '';
+        item.className = `indicator-item${itemToneClass ? ' ' + itemToneClass : ''}`;
         item.style.animationDelay = `${index * 60}ms`;
 
         const dotClass = tone === 'safe' ? 'indicator-dot--safe'
@@ -254,7 +258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const textSpan = document.createElement('span');
         textSpan.className = 'indicator-text';
-        textSpan.textContent = text;
+        textSpan.innerHTML = text;
 
         item.appendChild(dotSpan);
         item.appendChild(textSpan);
@@ -268,6 +272,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.textContent = value;
         el.className   = 'stat-cell__value';
         if (tone) el.classList.add(`stat-cell__value--${tone}`);
+    }
+
+    /**
+     * Renders a ranked list of risk_signals entries (either the 'increasing'
+     * or 'decreasing' group from the API) into a container, as horizontal
+     * bars scaled relative to the largest impact in the group.
+     *
+     * getLabel(item) resolves the display label for a signal - the URL
+     * scanner groups raw SHAP features via a feature->label map, while the
+     * email classifier's signals already carry a human-readable `label`.
+     */
+    function renderRankingGroup(container, signals, getLabel, signPrefix = '') {
+        if (!container) return;
+        container.innerHTML = "";
+
+        // Group signals by their display label, summing magnitude for duplicates
+        const grouped = {};
+        signals.forEach(item => {
+            const label = getLabel(item);
+            if (!grouped[label]) {
+                grouped[label] = { label, impact: 0 };
+            }
+            grouped[label].impact += Math.abs(item.impact);
+        });
+
+        const groupedSignals = Object.values(grouped)
+            .sort((a, b) => b.impact - a.impact);
+
+        const maxImpact = Math.max(...groupedSignals.map(s => s.impact), 0.0001);
+
+        groupedSignals.forEach(item => {
+            const pct = Math.round((item.impact / maxImpact) * 100);
+            const row = document.createElement("div");
+            row.className = "ranking-row";
+            row.innerHTML = `
+                <div class="ranking-row__label">${item.label}</div>
+                <div class="ranking-row__bar">
+                    <div class="ranking-row__fill" style="width:${pct}%"></div>
+                </div>
+                <div class="ranking-row__pct">${signPrefix}${pct}%</div>
+            `;
+            container.appendChild(row);
+        });
     }
 
     /**
@@ -491,6 +538,142 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ));
             }
 
+            const featureLabels = {
+                // Domain
+                time_domain_activation: "Domain Age",
+                time_domain_expiration: "Domain Registration",
+                domain_length: "Domain Structure",
+                qty_dot_domain: "Domain Structure",
+                qty_hyphen_domain: "Domain Structure",
+                qty_vowels_domain: "Domain Structure",
+                qty_numbers_domain: "Domain Structure",
+
+                // URL
+                length_url: "URL Length",
+                directory_length: "URL Structure",
+                qty_slash_directory: "URL Structure",
+                qty_dot_directory: "URL Structure",
+                qty_slash_url: "URL Structure",
+                qty_dot_url: "URL Structure",
+                qty_hyphen_url: "URL Structure",
+                qty_questionmark_url: "URL Structure",
+                qty_equal_url: "URL Structure",
+                qty_at_url: "URL Structure",
+
+                // DNS
+                qty_ip_resolved: "DNS Resolution",
+                qty_nameservers: "DNS Configuration",
+                qty_mx_servers: "Mail Server Configuration",
+                ttl_hostname: "DNS Stability",
+                time_response: "Server Availability",
+                asn_ip: "Hosting Network"
+            };
+
+            /* Top feature indicators (from risk_signals.increasing / .decreasing) */
+            const riskSignals = data.risk_signals || { increasing: { signals: [] }, decreasing: { signals: [] } };
+            const increasingSignals = (riskSignals.increasing?.signals || []).map(s => ({ ...s, direction: 'increases' }));
+            const decreasingSignals = (riskSignals.decreasing?.signals || []).map(s => ({ ...s, direction: 'decreases' }));
+            if (data.brand_alert?.impersonated) {
+
+                const highestImpact = Math.max(
+                    ...increasingSignals.map(s => Math.abs(s.impact)),
+                    1
+                );
+
+                increasingSignals.unshift({
+                    feature: "brand_impersonation",
+                    label: `Brand Impersonation (${data.brand_alert.brand})`,
+                    impact: highestImpact + 1,
+                    direction: "increases"
+                });
+            }
+
+            const allSignals = data.is_phishing ? increasingSignals : decreasingSignals;
+
+            allSignals.forEach((ind) => {
+                const isUp = ind.direction === 'increases';
+                const tone = isUp ? 'danger' : 'safe';
+                const feat = ind.feature;
+                const val  = ind.value;
+                let desc = '';
+
+                if (feat === "brand_impersonation") {
+                    // Already rendered separately above; skip duplicate.
+                    return;
+                }
+
+                if (feat === "time_domain_activation") {
+                    desc = val < 0
+                        ? "Domain registration age could not be verified."
+                        : `Domain has existed for ${Math.round(val)} days.`;
+                }
+
+                else if (feat === "time_domain_expiration") {
+                    desc = val < 0
+                        ? "Domain expiration information is unavailable."
+                        : `Domain registration remains valid for ${Math.round(val)} more days.`;
+                }
+
+                else if (feat === "time_response") {
+                    desc = val < 0
+                        ? "Server could not be reached."
+                        : `Server responded in ${(val * 1000).toFixed(0)} ms.`;
+                }
+
+                else if (feat === "qty_ip_resolved") {
+                    desc = val <= 0
+                        ? "Domain could not be resolved to an IP address."
+                        : `Domain resolves to ${Math.round(val)} IP address(es).`;
+                }
+
+                else if (feat === "length_url") {
+                    desc = `URL contains ${Math.round(val)} characters.`;
+                }
+
+                else if (feat === "domain_length") {
+                    desc = `Domain name contains ${Math.round(val)} characters.`;
+                }
+
+                else if (feat === "directory_length") {
+                    desc = val < 0
+                        ? "URL contains no directory path."
+                        : `Directory path length is ${Math.round(val)} characters.`;
+                }
+
+                else if (feat === "qty_slash_directory") {
+                    desc = `${Math.round(val)} directory separator(s) detected in the URL path.`;
+                }
+
+                else if (feat === "qty_dot_directory") {
+                    desc = `${Math.round(val)} dot character(s) detected inside URL directories.`;
+                }
+
+                else if (feat === "qty_dot_url") {
+                    desc = `${Math.round(val)} dot character(s) found in the URL.`;
+                }
+
+                else if (feat === "qty_hyphen_url") {
+                    desc = `${Math.round(val)} hyphen character(s) found in the URL.`;
+                }
+
+                else if (feat === "qty_mx_servers") {
+                    desc = val < 0
+                        ? "No mail exchange (MX) records were found."
+                        : `${Math.round(val)} mail server(s) detected.`;
+                }
+
+                else if (feat === "ttl_hostname") {
+                    desc = `DNS cache lifetime (TTL) is ${Math.round(val)} seconds.`;
+                }
+
+                else if (feat === "asn_ip") {
+                    desc = val < 0
+                        ? "Hosting network could not be identified."
+                        : "Hosting network information was successfully identified.";
+                }
+
+                else {
+                    desc = `${featureLabels[feat] || feat} was analyzed.`;
             /* Friendly feature name helper */
             function getFriendlyFeatureName(key) {
                 const customNames = {
@@ -580,6 +763,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             indicatorCount.textContent = `${count} signal${count !== 1 ? 's' : ''}`;
 
+            /* Ranked risk factor breakdown for URL analysis — split by direction */
+            const increaseContainer = document.getElementById('url-risk-ranking-increasing');
+            const decreaseContainer = document.getElementById('url-risk-ranking-decreasing');
+            const increaseTotalEl   = document.getElementById('url-ranking-increase-total');
+            const decreaseTotalEl   = document.getElementById('url-ranking-decrease-total');
+
+            const urlLabelResolver = (item) => featureLabels[item.feature] || item.feature.replace(/_/g, " ");
+
+            // Only show the group matching the verdict — increasing factors
+            // for a phishing verdict, decreasing factors for a safe verdict.
+            if (data.is_phishing) {
+                renderRankingGroup(increaseContainer, increasingSignals, urlLabelResolver, '+');
+                if (decreaseContainer) decreaseContainer.innerHTML = '';
+                if (increaseTotalEl) {
+                    increaseTotalEl.textContent =
+                        `+${(riskSignals.increasing?.total_influence ?? 0).toFixed(2)}`;
+                }
+                if (decreaseTotalEl) decreaseTotalEl.textContent = '—';
+            } else {
+                renderRankingGroup(decreaseContainer, decreasingSignals, urlLabelResolver, '−');
+                if (increaseContainer) increaseContainer.innerHTML = '';
+                if (decreaseTotalEl) {
+                    decreaseTotalEl.textContent =
+                        `${(riskSignals.decreasing?.total_influence ?? 0).toFixed(2)}`;
+                }
+                if (increaseTotalEl) increaseTotalEl.textContent = '—';
             /* Ranked risk factor breakdown for URL analysis */
             const urlRankingContainer = document.getElementById('url-risk-ranking');
             if (urlRankingContainer) {
@@ -684,6 +893,36 @@ document.addEventListener('DOMContentLoaded', async () => {
                 data.details?.is_free_provider ? 'YES' : 'NO',
                 data.details?.is_free_provider ? 'warn' : 'safe');
 
+            /* Ranked risk factor breakdown - same two-panel pattern as the URL
+               scanner: show the group matching the verdict (risk-increasing
+               factors for a phishing verdict, risk-decreasing/safe factors
+               for a legitimate verdict), scaled by real weighted impact. */
+            const emailRiskSignals = data.risk_signals || { increasing: { signals: [] }, decreasing: { signals: [] } };
+            const emailIncreasing = emailRiskSignals.increasing?.signals || [];
+            const emailDecreasing = emailRiskSignals.decreasing?.signals || [];
+            const emailLabelResolver = (item) => item.label || item.feature.replace(/_/g, " ");
+
+            const emailIncreaseContainer = document.getElementById('email-risk-ranking-increasing');
+            const emailDecreaseContainer = document.getElementById('email-risk-ranking-decreasing');
+            const emailIncreaseTotalEl   = document.getElementById('email-ranking-increase-total');
+            const emailDecreaseTotalEl   = document.getElementById('email-ranking-decrease-total');
+
+            if (data.is_phishing) {
+                renderRankingGroup(emailIncreaseContainer, emailIncreasing, emailLabelResolver, '+');
+                if (emailDecreaseContainer) emailDecreaseContainer.innerHTML = '';
+                if (emailIncreaseTotalEl) {
+                    emailIncreaseTotalEl.textContent =
+                        `+${(emailRiskSignals.increasing?.total_influence ?? 0).toFixed(2)}`;
+                }
+                if (emailDecreaseTotalEl) emailDecreaseTotalEl.textContent = '—';
+            } else {
+                renderRankingGroup(emailDecreaseContainer, emailDecreasing, emailLabelResolver, '−');
+                if (emailIncreaseContainer) emailIncreaseContainer.innerHTML = '';
+                if (emailDecreaseTotalEl) {
+                    emailDecreaseTotalEl.textContent =
+                        `${(emailRiskSignals.decreasing?.total_influence ?? 0).toFixed(2)}`;
+                }
+                if (emailIncreaseTotalEl) emailIncreaseTotalEl.textContent = '—';
             /* Ranked risk factor breakdown (from confidence_scorer) */
             const componentScores = data.details?.component_scores || {};
             const componentLabels = {
@@ -729,8 +968,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 emailIndicatorsList.appendChild(makeIndicator('No immediate threat anomalies detected.', 'safe', 0));
                 emailIndicatorCount.textContent = '0 signals';
             } else {
+                const reasonTone = data.is_phishing ? 'danger' : 'safe';
                 reasons.forEach((reason, i) => {
-                    emailIndicatorsList.appendChild(makeIndicator(reason, 'danger', i));
+                    emailIndicatorsList.appendChild(makeIndicator(reason, reasonTone, i));
                 });
                 emailIndicatorCount.textContent = `${reasons.length} signal${reasons.length !== 1 ? 's' : ''}`;
             }
