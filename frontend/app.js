@@ -91,8 +91,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /* ── Init gauges ───────────────────────────────────────── */
     [riskProgress, emailRiskProgress].forEach(el => {
-        el.setAttribute('stroke-dasharray', `${CIRCUMFERENCE} ${CIRCUMFERENCE}`);
-        el.setAttribute('stroke-dashoffset', CIRCUMFERENCE);
+        el.style.strokeDasharray = `${CIRCUMFERENCE} ${CIRCUMFERENCE}`;
+        el.style.strokeDashoffset = CIRCUMFERENCE;
     });
 
     /* ── Animated metric counters ──────────────────────────── */
@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     function applyGaugeState(progressEl, pctEl, labelEl, badgeEl, descEl, stripEl, percent, isEmail = false) {
         const offset = CIRCUMFERENCE - (percent / 100) * CIRCUMFERENCE;
-        progressEl.setAttribute('stroke-dashoffset', offset);
+        progressEl.style.strokeDashoffset = offset;
         pctEl.textContent = `${percent}%`;
 
         let color, badgeClass, labelText, verdictText, iconSvg, badgeIcon;
@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             badgeIcon = iconSvg;
         }
 
-        progressEl.setAttribute('stroke', color);
+        progressEl.style.stroke = color;
 
         // Gauge label pill — icon + text (using textContent safely for text, and clear/append for icon)
         labelEl.textContent = '';
@@ -730,7 +730,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             }
-            
+
             indicatorCount.textContent = `${count} signal${count !== 1 ? 's' : ''}`;
 
             /* Ranked risk factor breakdown for URL analysis — split by direction */
