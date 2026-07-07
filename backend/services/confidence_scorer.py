@@ -238,5 +238,4 @@ def score_analysis_confidence(
         is_phishing=is_phishing,
         weighted_contributions=weighted_contributions,
         weights_used=weights_used
-        is_phishing=is_phishing
     )
