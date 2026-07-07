@@ -20,16 +20,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     /* ── Bootstrap API key from backend (never hardcoded in client JS) ── */
     let _apiKey = localStorage.getItem('arcis_api_key') || '';
     if (!_apiKey) {
-        try {
-            const cfgRes = await fetch(`${API_BASE}/api/config`);
-            if (cfgRes.ok) {
-                const cfg = await cfgRes.json();
-                _apiKey = cfg.api_key || '';
-                if (_apiKey) localStorage.setItem('arcis_api_key', _apiKey);
-            }
-        } catch (_) {
-            // Backend unreachable — key stays empty, requests will show 403 prompt
-        }
+        fetch(`${API_BASE}/api/config`)
+            .then(res => res.ok ? res.json() : null)
+            .then(cfg => {
+                if (cfg && cfg.api_key) {
+                    _apiKey = cfg.api_key;
+                    localStorage.setItem('arcis_api_key', _apiKey);
+                }
+            })
+            .catch(() => {
+                // Backend unreachable — key stays empty, requests will show 403 prompt
+            });
     }
     const getApiKey = () => localStorage.getItem('arcis_api_key') || _apiKey;
 

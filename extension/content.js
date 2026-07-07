@@ -476,7 +476,7 @@
                 return;
               }
               const url = (response && response.url) ? response.url : 'https://arcis-dvgq.onrender.com';
-              if (url && url.startsWith('https://')) {
+              if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
                 reportLink.href = reportId ? `${url}/report.html?id=${reportId}` : `${url}/`;
               }
           });

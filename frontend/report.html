@@ -435,8 +435,10 @@
                 }
             }
 
+            const API_BASE = window.location.origin.startsWith('file://') ? 'http://localhost:5001' : window.location.origin;
+
             function loadReportWithKey(key) {
-                fetch(`/api/report/${idParam}`, {
+                fetch(`${API_BASE}/api/report/${idParam}`, {
                     headers: {
                         'X-API-Key': key
                     }
